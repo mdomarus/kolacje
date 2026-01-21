@@ -6,25 +6,23 @@ export async function GET(request: NextRequest) {
     const db = getDb();
 
     // Get all users with their voting status
-    const users = db
-      .prepare(`
-        SELECT
-          u.id,
-          u.phone,
-          u.name,
-          u.is_admin,
-          CASE WHEN
-            EXISTS(SELECT 1 FROM votes WHERE user_id = u.id AND course = 'first')
-            THEN 1 ELSE 0
-          END as has_first_vote,
-          CASE WHEN
-            EXISTS(SELECT 1 FROM votes WHERE user_id = u.id AND course = 'second')
-            THEN 1 ELSE 0
-          END as has_second_vote
-        FROM users u
-        ORDER BY u.name
-      `)
-      .all();
+    const users = await db`
+      SELECT
+        u.id,
+        u.phone,
+        u.name,
+        u.is_admin,
+        CASE WHEN
+          EXISTS(SELECT 1 FROM votes WHERE user_id = u.id AND course = 'first')
+          THEN 1 ELSE 0
+        END as has_first_vote,
+        CASE WHEN
+          EXISTS(SELECT 1 FROM votes WHERE user_id = u.id AND course = 'second')
+          THEN 1 ELSE 0
+        END as has_second_vote
+      FROM users u
+      ORDER BY u.name
+    `;
 
     return NextResponse.json(users);
   } catch (error) {
@@ -58,12 +56,12 @@ export async function DELETE(request: NextRequest) {
     const db = getDb();
 
     // Delete all votes for this user first
-    db.prepare('DELETE FROM votes WHERE user_id = ?').run(userId);
+    await db`DELETE FROM votes WHERE user_id = ${userId}`;
 
     // Delete the user
-    const result = db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+    await db`DELETE FROM users WHERE id = ${userId}`;
 
-    return NextResponse.json({ success: result.changes > 0 });
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Delete user error:', error);
     return NextResponse.json(
@@ -96,15 +94,20 @@ export async function PATCH(request: NextRequest) {
 
     // Update user's admin status if provided
     if (newIsAdmin !== undefined) {
-      db.prepare('UPDATE users SET is_admin = ? WHERE id = ?').run(
-        newIsAdmin ? 1 : 0,
-        userId
-      );
+      await db`
+        UPDATE users
+        SET is_admin = ${newIsAdmin ? 1 : 0}
+        WHERE id = ${userId}
+      `;
     }
 
     // Update user's name if provided
     if (newName !== undefined && newName.trim()) {
-      db.prepare('UPDATE users SET name = ? WHERE id = ?').run(newName.trim(), userId);
+      await db`
+        UPDATE users
+        SET name = ${newName.trim()}
+        WHERE id = ${userId}
+      `;
     }
 
     return NextResponse.json({ success: true });

@@ -15,30 +15,29 @@ export async function POST(request: NextRequest) {
     const db = getDb();
 
     // Check if user already exists
-    let user = db
-      .prepare('SELECT id, phone, name, is_admin FROM users WHERE phone = ?')
-      .get(phone);
+    let user = await db`
+      SELECT id, phone, name, is_admin FROM users WHERE phone = ${phone}
+    `;
 
-    if (user) {
+    if (user && user.length > 0) {
       // User already exists, return their data as-is
-      return NextResponse.json(user);
+      return NextResponse.json(user[0]);
     }
 
     // New user - check if they should be admin
     const isAdmin = phone === '111111111' ? 1 : 0;
 
-    const stmt = db.prepare(
-      'INSERT INTO users (phone, name, is_admin) VALUES (?, ?, ?)'
-    );
-
-    stmt.run(phone, name, isAdmin);
+    await db`
+      INSERT INTO users (phone, name, is_admin)
+      VALUES (${phone}, ${name}, ${isAdmin})
+    `;
 
     // Get the newly created user
-    user = db
-      .prepare('SELECT id, phone, name, is_admin FROM users WHERE phone = ?')
-      .get(phone);
+    user = await db`
+      SELECT id, phone, name, is_admin FROM users WHERE phone = ${phone}
+    `;
 
-    return NextResponse.json(user);
+    return NextResponse.json(user[0]);
   } catch (error) {
     console.error('Setup login error:', error);
     return NextResponse.json(

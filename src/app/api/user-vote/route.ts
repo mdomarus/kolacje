@@ -23,15 +23,16 @@ export async function GET(request: NextRequest) {
 
     const db = getDb();
 
-    const vote = db
-      .prepare('SELECT dish_id, course FROM votes WHERE user_id = ? AND course = ?')
-      .get(userId, course);
+    const vote = await db`
+      SELECT dish_id, course FROM votes
+      WHERE user_id = ${userId} AND course = ${course}
+    `;
 
-    if (!vote) {
+    if (!vote || vote.length === 0) {
       return NextResponse.json(null);
     }
 
-    return NextResponse.json(vote);
+    return NextResponse.json(vote[0]);
   } catch (error) {
     console.error('Get user vote error:', error);
     return NextResponse.json(

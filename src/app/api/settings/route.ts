@@ -5,11 +5,9 @@ export async function GET(request: NextRequest) {
   try {
     const db = getDb();
 
-    const settings = db
-      .prepare("SELECT key, value FROM settings")
-      .all() as { key: string; value: string }[];
+    const settings = await db`SELECT key, value FROM settings`;
 
-    const result = Object.fromEntries(settings.map(s => [s.key, s.value]));
+    const result = Object.fromEntries(settings.map((s: any) => [s.key, s.value]));
 
     return NextResponse.json(result);
   } catch (error) {
@@ -43,9 +41,13 @@ export async function POST(request: NextRequest) {
     const db = getDb();
 
     // Update or insert setting
-    db.prepare(
-      "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = CURRENT_TIMESTAMP"
-    ).run(key, value, value);
+    await db`
+      INSERT INTO settings (key, value, updated_at)
+      VALUES (${key}, ${value}, CURRENT_TIMESTAMP)
+      ON CONFLICT(key) DO UPDATE SET
+        value = ${value},
+        updated_at = CURRENT_TIMESTAMP
+    `;
 
     return NextResponse.json({ success: true, key, value });
   } catch (error) {

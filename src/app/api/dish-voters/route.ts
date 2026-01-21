@@ -16,15 +16,13 @@ export async function GET(request: NextRequest) {
     const db = getDb();
 
     // Get all users who voted for this dish
-    const voters = db
-      .prepare(`
-        SELECT u.id, u.name, u.phone
-        FROM votes v
-        JOIN users u ON v.user_id = u.id
-        WHERE v.dish_id = ?
-        ORDER BY u.name
-      `)
-      .all(dishId);
+    const voters = await db`
+      SELECT u.id, u.name, u.phone
+      FROM votes v
+      JOIN users u ON v.user_id = u.id
+      WHERE v.dish_id = ${dishId}
+      ORDER BY u.name
+    `;
 
     return NextResponse.json(voters);
   } catch (error) {

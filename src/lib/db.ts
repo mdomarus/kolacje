@@ -1,91 +1,77 @@
-import Database from 'better-sqlite3';
-import path from 'path';
+import postgres from 'postgres';
 
-const dbPath = process.env.NODE_ENV === 'test'
-  ? ':memory:'
-  : path.join(process.cwd(), 'meals.db');
+let sql: postgres.Sql | null = null;
 
-let db: Database.Database | null = null;
-
-export function getDb(): Database.Database {
-  if (!db) {
-    db = new Database(dbPath);
-    db.pragma('journal_mode = WAL');
+export function getDb() {
+  if (!sql) {
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) {
+      throw new Error('DATABASE_URL environment variable is not set');
+    }
+    sql = postgres(connectionString, {
+      ssl: 'require',
+    });
     initializeSchema();
   }
-  return db;
+  return sql;
 }
 
-function initializeSchema() {
-  const database = db!;
+async function initializeSchema() {
+  const db = sql!;
 
-  // Users table
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      phone TEXT UNIQUE NOT NULL,
-      name TEXT NOT NULL,
-      is_admin INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  // Add is_admin column if it doesn't exist (migration)
   try {
-    const result = database.prepare("PRAGMA table_info(users)").all() as any[];
-    const hasAdminColumn = result.some(col => col.name === 'is_admin');
-    if (!hasAdminColumn) {
-      database.exec(`ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0`);
-    }
-  } catch (e) {
-    // Ignore errors - table might not exist or column already exists
-  }
+    // Users table
+    await db`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        phone TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        is_admin INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
 
-  // Dishes table
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS dishes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      course TEXT NOT NULL CHECK(course IN ('first', 'second')),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+    // Dishes table
+    await db`
+      CREATE TABLE IF NOT EXISTS dishes (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        course TEXT NOT NULL CHECK(course IN ('first', 'second')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
 
-  // Votes table
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS votes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      dish_id INTEGER NOT NULL,
-      course TEXT NOT NULL CHECK(course IN ('first', 'second')),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(user_id) REFERENCES users(id),
-      FOREIGN KEY(dish_id) REFERENCES dishes(id),
-      UNIQUE(user_id, course)
-    )
-  `);
+    // Votes table
+    await db`
+      CREATE TABLE IF NOT EXISTS votes (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        dish_id INTEGER NOT NULL,
+        course TEXT NOT NULL CHECK(course IN ('first', 'second')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY(dish_id) REFERENCES dishes(id) ON DELETE CASCADE,
+        UNIQUE(user_id, course)
+      )
+    `;
 
-  // Settings table
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+    // Settings table
+    await db`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
 
-  // Initialize default settings
-  try {
-    const lockStatus = database
-      .prepare("SELECT value FROM settings WHERE key = 'menus_locked'")
-      .get();
-    if (!lockStatus) {
-      database
-        .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
-        .run('menus_locked', '0');
-    }
-  } catch (e) {
-    // Ignore errors - settings table might have just been created
+    // Initialize default settings
+    await db`
+      INSERT INTO settings (key, value)
+      VALUES ('menus_locked', '0')
+      ON CONFLICT DO NOTHING
+    `;
+  } catch (error) {
+    console.error('Error initializing database schema:', error);
   }
 }
 

@@ -21,17 +21,14 @@ export async function POST(request: NextRequest) {
     }
 
     const db = getDb();
-    const stmt = db.prepare(
-      'INSERT INTO dishes (name, course) VALUES (?, ?)'
-    );
 
-    const result = stmt.run(name, course);
+    const result = await db`
+      INSERT INTO dishes (name, course)
+      VALUES (${name}, ${course})
+      RETURNING id, name, course
+    `;
 
-    const dish = db
-      .prepare('SELECT id, name, course FROM dishes WHERE id = ?')
-      .get(result.lastInsertRowid);
-
-    return NextResponse.json(dish);
+    return NextResponse.json(result[0]);
   } catch (error) {
     console.error('Add dish error:', error);
     return NextResponse.json(
@@ -57,33 +54,30 @@ export async function DELETE(request: NextRequest) {
 
     // Clear all dishes and votes
     if (clearAll) {
-      db.prepare('DELETE FROM votes').run();
-      db.prepare('DELETE FROM dishes').run();
+      await db`DELETE FROM votes`;
+      await db`DELETE FROM dishes`;
       return NextResponse.json({ success: true });
     }
 
     // Clear all dishes from a specific course
     if (course && ['first', 'second'].includes(course)) {
-      const dishResults = db
-        .prepare('SELECT id FROM dishes WHERE course = ?')
-        .all(course) as { id: number }[];
+      const dishResults = await db`
+        SELECT id FROM dishes WHERE course = ${course}
+      `;
 
-      const dishIds = dishResults.map((d) => d.id);
+      const dishIds = dishResults.map((d: any) => d.id);
 
       // Delete votes for these dishes
       if (dishIds.length > 0) {
-        const placeholders = dishIds.map(() => '?').join(',');
-        db.prepare(`DELETE FROM votes WHERE dish_id IN (${placeholders})`).run(
-          ...dishIds
-        );
+        for (const id of dishIds) {
+          await db`DELETE FROM votes WHERE dish_id = ${id}`;
+        }
       }
 
       // Delete the dishes
-      const result = db
-        .prepare('DELETE FROM dishes WHERE course = ?')
-        .run(course);
+      await db`DELETE FROM dishes WHERE course = ${course}`;
 
-      return NextResponse.json({ success: result.changes > 0 });
+      return NextResponse.json({ success: true });
     }
 
     // Delete a single dish by ID
@@ -95,12 +89,12 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Delete all votes for this dish first
-    db.prepare('DELETE FROM votes WHERE dish_id = ?').run(dishId);
+    await db`DELETE FROM votes WHERE dish_id = ${dishId}`;
 
     // Delete the dish
-    const result = db.prepare('DELETE FROM dishes WHERE id = ?').run(dishId);
+    await db`DELETE FROM dishes WHERE id = ${dishId}`;
 
-    return NextResponse.json({ success: result.changes > 0 });
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Delete dish error:', error);
     return NextResponse.json(
@@ -119,13 +113,16 @@ export async function GET(request: NextRequest) {
     let dishes;
 
     if (course && ['first', 'second'].includes(course)) {
-      dishes = db
-        .prepare('SELECT id, name, course FROM dishes WHERE course = ? ORDER BY name')
-        .all(course);
+      dishes = await db`
+        SELECT id, name, course FROM dishes
+        WHERE course = ${course}
+        ORDER BY name
+      `;
     } else {
-      dishes = db
-        .prepare('SELECT id, name, course FROM dishes ORDER BY course, name')
-        .all();
+      dishes = await db`
+        SELECT id, name, course FROM dishes
+        ORDER BY course, name
+      `;
     }
 
     return NextResponse.json(dishes);

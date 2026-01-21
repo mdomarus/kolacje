@@ -22,11 +22,11 @@ export async function POST(request: NextRequest) {
     const db = getDb();
 
     // Check if dish exists
-    const dish = db
-      .prepare('SELECT id FROM dishes WHERE id = ? AND course = ?')
-      .get(dishId, course);
+    const dish = await db`
+      SELECT id FROM dishes WHERE id = ${dishId} AND course = ${course}
+    `;
 
-    if (!dish) {
+    if (!dish || dish.length === 0) {
       return NextResponse.json(
         { error: 'Dish not found' },
         { status: 404 }
@@ -34,24 +34,20 @@ export async function POST(request: NextRequest) {
     }
 
     // Insert or update vote
-    const stmt = db.prepare(`
+    await db`
       INSERT INTO votes (user_id, dish_id, course)
-      VALUES (?, ?, ?)
+      VALUES (${userId}, ${dishId}, ${course})
       ON CONFLICT(user_id, course) DO UPDATE SET
-      dish_id = ?,
+      dish_id = ${dishId},
       created_at = CURRENT_TIMESTAMP
-    `);
+    `;
 
-    stmt.run(userId, dishId, course, dishId);
+    const vote = await db`
+      SELECT id, user_id, dish_id, course FROM votes
+      WHERE user_id = ${userId} AND course = ${course}
+    `;
 
-    const vote = db
-      .prepare(`
-        SELECT id, user_id, dish_id, course FROM votes
-        WHERE user_id = ? AND course = ?
-      `)
-      .get(userId, course);
-
-    return NextResponse.json(vote);
+    return NextResponse.json(vote[0]);
   } catch (error) {
     console.error('Vote error:', error);
     return NextResponse.json(
@@ -70,33 +66,29 @@ export async function GET(request: NextRequest) {
     let votes;
 
     if (course && ['first', 'second'].includes(course)) {
-      votes = db
-        .prepare(`
-          SELECT
-            d.id,
-            d.name,
-            COUNT(v.id) as vote_count
-          FROM dishes d
-          LEFT JOIN votes v ON d.id = v.dish_id
-          WHERE d.course = ?
-          GROUP BY d.id
-          ORDER BY vote_count DESC, d.name
-        `)
-        .all(course);
+      votes = await db`
+        SELECT
+          d.id,
+          d.name,
+          COUNT(v.id)::int as vote_count
+        FROM dishes d
+        LEFT JOIN votes v ON d.id = v.dish_id
+        WHERE d.course = ${course}
+        GROUP BY d.id
+        ORDER BY vote_count DESC, d.name
+      `;
     } else {
-      votes = db
-        .prepare(`
-          SELECT
-            d.id,
-            d.name,
-            d.course,
-            COUNT(v.id) as vote_count
-          FROM dishes d
-          LEFT JOIN votes v ON d.id = v.dish_id
-          GROUP BY d.id
-          ORDER BY d.course, vote_count DESC, d.name
-        `)
-        .all();
+      votes = await db`
+        SELECT
+          d.id,
+          d.name,
+          d.course,
+          COUNT(v.id)::int as vote_count
+        FROM dishes d
+        LEFT JOIN votes v ON d.id = v.dish_id
+        GROUP BY d.id
+        ORDER BY d.course, vote_count DESC, d.name
+      `;
     }
 
     return NextResponse.json(votes);
