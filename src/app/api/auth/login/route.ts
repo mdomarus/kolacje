@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
 
     // Insert user if doesn't exist
     await db`
-      INSERT INTO users (phone, name) 
+      INSERT INTO users (phone, name)
       VALUES (${phone}, ${name})
       ON CONFLICT DO NOTHING
     `;
