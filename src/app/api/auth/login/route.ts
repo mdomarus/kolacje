@@ -13,17 +13,19 @@ export async function POST(request: NextRequest) {
     }
 
     const db = getDb();
-    const stmt = db.prepare(
-      'INSERT OR IGNORE INTO users (phone, name) VALUES (?, ?)'
-    );
 
-    stmt.run(phone, name);
+    // Insert user if doesn't exist
+    await db`
+      INSERT INTO users (phone, name) 
+      VALUES (${phone}, ${name})
+      ON CONFLICT DO NOTHING
+    `;
 
-    const user = db
-      .prepare('SELECT id, phone, name, is_admin FROM users WHERE phone = ?')
-      .get(phone);
+    const user = await db`
+      SELECT id, phone, name, is_admin FROM users WHERE phone = ${phone}
+    `;
 
-    return NextResponse.json(user);
+    return NextResponse.json(user[0]);
   } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json(
