@@ -1,65 +1,241 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect } from 'react';
+import LoginForm from '@/components/LoginForm';
+import VotingSection from '@/components/VotingSection';
+import NotVotedList from '@/components/NotVotedList';
+import AdminPanel from '@/components/AdminPanel';
+import { LogOut } from 'lucide-react';
+
+interface User {
+  id: number;
+  phone: string;
+  name: string;
+  is_admin: number;
+}
 
 export default function Home() {
+  const [user, setUser] = useState<User | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [surveyDate, setSurveyDate] = useState('');
+  const [adminViewMode, setAdminViewMode] = useState<'admin' | 'user'>('admin');
+
+  // Load user from localStorage on mount
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch (error) {
+        console.error('Failed to parse stored user:', error);
+        localStorage.removeItem('user');
+      }
+    }
+    setIsLoading(false);
+
+    // Fetch survey date
+    const fetchSurveyDate = async () => {
+      try {
+        const response = await fetch('/api/settings');
+        const settings = await response.json();
+        setSurveyDate(settings.survey_date || '');
+      } catch (error) {
+        console.error('Failed to fetch survey date:', error);
+      }
+    };
+    fetchSurveyDate();
+  }, []);
+
+  const handleLoginSuccess = (loggedInUser: User) => {
+    setUser(loggedInUser);
+    localStorage.setItem('user', JSON.stringify(loggedInUser));
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem('user');
+  };
+
+  const handleVoteChange = () => {
+    setRefreshKey((prev) => prev + 1);
+  };
+
+  const handleDishChanged = () => {
+    setRefreshKey((prev) => prev + 1);
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="max-w-6xl mx-auto p-6">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold text-gray-800 mb-2">
+            🍽️ Aplikacja do głosowania na dania
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="text-gray-600">
+            {isLoading ? 'Ładowanie...' : user ? (user.is_admin ? 'Panel administracyjny' : 'Wybierz swoje ulubione dania') : 'Zaloguj się, aby zacząć'}
           </p>
+          {surveyDate && !isLoading && (
+            <div className="mt-4 bg-blue-50 border-l-4 border-blue-500 p-3 rounded">
+              <p className="text-sm text-gray-600">📅 Ankieta dotyczy dnia:</p>
+              <p className="text-lg font-bold text-blue-700">{surveyDate}</p>
+            </div>
+          )}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+
+        {isLoading ? (
+          // Loading State
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md mx-auto border-2 border-gray-200">
+            <div className="flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <span className="ml-3 text-gray-600">Sprawdzanie sesji...</span>
+            </div>
+          </div>
+        ) : !user ? (
+          // Login Screen
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md mx-auto border-2 border-gray-200">
+            <h2 className="text-3xl font-bold text-gray-800 mb-8 text-center">🍽️ Logowanie</h2>
+            <LoginForm onLoginSuccess={handleLoginSuccess} />
+            <div className="mt-8 text-sm text-gray-700 border-t-2 pt-6 space-y-4">
+              <div>
+                <p className="font-bold text-blue-600 mb-2">👔 Konto admina:</p>
+                <p className="text-gray-700">Telefon: <span className="font-mono font-bold">111111111</span></p>
+                <p className="text-gray-700">Imię: Admin</p>
+              </div>
+              <div>
+                <p className="font-bold text-green-600 mb-2">👤 Konto użytkownika:</p>
+                <p className="text-gray-700">Telefon: dowolny numer</p>
+                <p className="text-gray-700">Imię: twoje imię</p>
+              </div>
+            </div>
+          </div>
+        ) : user.is_admin ? (
+          // Admin View
+          adminViewMode === 'admin' ? (
+            <AdminPanel
+              user={user}
+              onLogout={handleLogout}
+              onDishChanged={handleDishChanged}
+              refreshKey={refreshKey}
+              onToggleUserView={() => setAdminViewMode('user')}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+          ) : (
+            // User view for admin
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Back to Admin Button */}
+              <div className="lg:col-span-2">
+                <button
+                  onClick={() => setAdminViewMode('admin')}
+                  className="mb-4 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 font-medium transition"
+                >
+                  ← Powrót do panelu admina
+                </button>
+              </div>
+              {/* Left Column - Voting */}
+              <div className="lg:col-span-2 space-y-6">
+                {/* User Card */}
+                <div className="bg-white rounded-2xl shadow-lg p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-gray-600 text-sm">Zalogowany jako</p>
+                      <h2 className="text-2xl font-bold text-gray-800">
+                        {user.name}
+                      </h2>
+                      <p className="text-gray-500 text-sm">{user.phone}</p>
+                    </div>
+                    <button
+                      onClick={handleLogout}
+                      className="flex items-center gap-2 bg-red-100 text-red-700 px-4 py-2 rounded-lg hover:bg-red-200 transition"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      Wyloguj
+                    </button>
+                  </div>
+                </div>
+
+                {/* Voting Section */}
+                <div className="bg-white rounded-2xl shadow-lg p-6 space-y-8">
+                  <h2 className="text-2xl font-bold text-gray-800">Głosowanie</h2>
+                  <VotingSection
+                    key={`first-${refreshKey}`}
+                    course="first"
+                    userId={user.id}
+                    onVoteChange={handleVoteChange}
+                  />
+                  <div className="border-t pt-8">
+                    <VotingSection
+                      key={`second-${refreshKey}`}
+                      course="second"
+                      userId={user.id}
+                      onVoteChange={handleVoteChange}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column - Status */}
+              <div className="lg:col-span-1">
+                <div className="bg-white rounded-2xl shadow-lg p-6 sticky top-6">
+                  <NotVotedList />
+                </div>
+              </div>
+            </div>
+          )
+        ) : (
+          // User View
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left Column - Voting */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* User Card */}
+              <div className="bg-white rounded-2xl shadow-lg p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-600 text-sm">Zalogowany jako</p>
+                    <h2 className="text-2xl font-bold text-gray-800">
+                      {user.name}
+                    </h2>
+                    <p className="text-gray-500 text-sm">{user.phone}</p>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-2 bg-red-100 text-red-700 px-4 py-2 rounded-lg hover:bg-red-200 transition"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Wyloguj
+                  </button>
+                </div>
+              </div>
+
+              {/* Voting Section */}
+              <div className="bg-white rounded-2xl shadow-lg p-6 space-y-8">
+                <h2 className="text-2xl font-bold text-gray-800">Głosowanie</h2>
+                <VotingSection
+                  key={`first-${refreshKey}`}
+                  course="first"
+                  userId={user.id}
+                  onVoteChange={handleVoteChange}
+                />
+                <div className="border-t pt-8">
+                  <VotingSection
+                    key={`second-${refreshKey}`}
+                    course="second"
+                    userId={user.id}
+                    onVoteChange={handleVoteChange}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column - Status */}
+            <div className="lg:col-span-1">
+              <div className="bg-white rounded-2xl shadow-lg p-6 sticky top-6">
+                <NotVotedList />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </main>
   );
 }
